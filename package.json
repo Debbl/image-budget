@@ -1,0 +1,41 @@
+{
+  "name": "image-budget-monorepo",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Monorepo for image-budget: the library, its docs site and its playgrounds",
+  "homepage": "https://github.com/Debbl/image-budget#readme",
+  "bugs": "https://github.com/Debbl/image-budget/issues",
+  "license": "MIT",
+  "author": "Brendan Dash <me@aiwan.run> (https://aiwan.run)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Debbl/image-budget.git"
+  },
+  "type": "module",
+  "scripts": {
+    "build": "pnpm --filter image-budget build",
+    "test": "pnpm --filter image-budget test",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "oxlint",
+    "lint:fix": "oxlint --fix",
+    "format": "oxfmt",
+    "format:check": "oxfmt --check",
+    "release": "pnpm --filter image-budget release",
+    "dev:website": "pnpm --filter @apps/website dev",
+    "build:website": "pnpm --filter @apps/website build",
+    "deploy:website": "pnpm --filter @apps/website run deploy",
+    "extract:website": "pnpm --filter @apps/website extract",
+    "dev:next": "pnpm --filter playground-nextjs dev",
+    "build:next": "pnpm --filter playground-nextjs build",
+    "dev:vite": "pnpm --filter playground-vite dev",
+    "build:vite": "pnpm --filter playground-vite build"
+  },
+  "devDependencies": {
+    "@debbl/oxc-config": "^0.0.5",
+    "@types/node": "^26.5.1",
+    "oxfmt": "^0.67.0",
+    "oxlint": "^1.82.0",
+    "typescript": "^7.0.2"
+  },
+  "packageManager": "pnpm@12.4.1"
+}

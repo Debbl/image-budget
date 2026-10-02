@@ -1,0 +1,73 @@
+{
+  "name": "image-budget",
+  "version": "0.0.0",
+  "description": "Compress an image to a byte budget in the browser, and find out what actually happened",
+  "keywords": [
+    "avif",
+    "browser",
+    "canvas",
+    "compress",
+    "heic",
+    "image",
+    "jsquash",
+    "webp"
+  ],
+  "homepage": "https://github.com/Debbl/image-budget#readme",
+  "bugs": "https://github.com/Debbl/image-budget/issues",
+  "license": "MIT",
+  "author": "Brendan Dash <me@aiwan.run> (https://aiwan.run)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Debbl/image-budget.git"
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./dist/index.mjs",
+    "./jsquash": "./dist/jsquash.mjs",
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "tsdown",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "release": "bumpp"
+  },
+  "devDependencies": {
+    "@jsquash/avif": "^2.1.1",
+    "@jsquash/jpeg": "^1.6.0",
+    "@jsquash/webp": "^1.5.0",
+    "@types/node": "^26.5.1",
+    "bumpp": "^12.3.0",
+    "happy-dom": "^20.14.5",
+    "heic-to": "^1.5.2",
+    "tsdown": "^0.23.0",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.0"
+  },
+  "peerDependencies": {
+    "@jsquash/avif": ">=2",
+    "@jsquash/jpeg": ">=1",
+    "@jsquash/webp": ">=1",
+    "heic-to": ">=1.5"
+  },
+  "peerDependenciesMeta": {
+    "@jsquash/avif": {
+      "optional": true
+    },
+    "@jsquash/jpeg": {
+      "optional": true
+    },
+    "@jsquash/webp": {
+      "optional": true
+    },
+    "heic-to": {
+      "optional": true
+    }
+  },
+  "packageManager": "pnpm@12.4.1"
+}

@@ -1,0 +1,90 @@
+---
+title: 快速开始
+description: 压到目标体积，并读出实际发生了什么
+---
+
+## 安装
+
+```bash
+pnpm add image-budget
+```
+
+零依赖。默认路径是 `createImageBitmap` + `OffscreenCanvas`，都是浏览器原生。
+
+## 把文件压进预算
+
+```ts
+import { compress } from 'image-budget'
+
+const result = await compress(file, {
+  maxBytes: 200 * 1024,
+  maxDimension: 2048,
+})
+
+await upload(result.blob)
+```
+
+`result.blob` 是能塞进 200 kB 的最大输出。这中间跑了几次编码，`result.attempts`
+会告诉你。
+
+## 然后检查你拿到的是什么
+
+这才是重点，也是这个库存在的理由：
+
+```ts
+if (result.degraded.length > 0) {
+  console.warn('not what we asked for', result.degraded)
+}
+```
+
+浏览器图片压缩里的每一种失败都是静默的。`canvas.convertToBlob` 遇到编不了的格式
+会直接给你 PNG，不报错。像素一旦进了 canvas，EXIF 就没了。超过 Safari 像素上限的
+图会渲染成空白而不是抛异常。而任何质量都达不到的预算，就只是……没达到。
+
+所以 `compress` 从不把你的请求原样回显给你。`result.format` 是从 blob 上读回来的，
+任何没按计划走的事都会成为 `result.degraded` 里的一项：
+
+```ts
+;[
+  { kind: 'format', want: 'image/avif', got: 'image/webp' },
+  { kind: 'exif', reason: 'engine-cannot-preserve' },
+]
+```
+
+空数组是你唯一能确认"成了"的方式。
+
+## HEIC
+
+不需要配置。HEIC 靠文件的 magic bytes 识别 —— iOS 从相册选出来的文件经常报空
+mime type —— 然后交给 [`heic-to`](https://github.com/hoppergee/heic-to) 解码，
+它是按需 import 的，所以只有真的来了 HEIC，打包产物才会付 libheif 的钱。
+
+需要的话装上它：
+
+```bash
+pnpm add heic-to
+```
+
+## AVIF
+
+浏览器能解 AVIF 的范围远大于能编的范围，所以 AVIF 走
+[jSquash](https://github.com/jamsinclair/jsquash) 的 WASM codec，放在第二个入口后面：
+
+```ts
+import { compress } from 'image-budget'
+import { jsquashEngine } from 'image-budget/jsquash'
+
+const result = await compress(file, {
+  maxBytes: 100 * 1024,
+  format: 'image/avif',
+  engine: jsquashEngine,
+})
+```
+
+代价和它需要的响应头见 [引擎](/zh/docs/engines)。
+
+## 这个库不做什么
+
+展示端的事 —— 按请求协商格式、多尺寸、CDN 缓存 —— 不该放在浏览器里。让图片服务
+指向你的源站去做。这个库管的是上传路径：把离开设备的字节变小，并且知道你发出去的
+到底是什么。

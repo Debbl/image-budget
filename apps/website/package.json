@@ -1,0 +1,39 @@
+{
+  "name": "@apps/website",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Documentation website for image-budget, at image-budget.aiwan.run",
+  "scripts": {
+    "postinstall": "fumadocs-mdx",
+    "dev": "next dev",
+    "build": "next build",
+    "start": "serve out",
+    "typecheck": "next typegen && tsc --noEmit",
+    "deploy": "pnpm build && wrangler deploy",
+    "preview": "pnpm build && wrangler dev",
+    "extract": "i18n-extract --locales en,zh --src src --messages messages"
+  },
+  "dependencies": {
+    "best-i18n": "^0.0.8",
+    "fumadocs-core": "^16.15.10",
+    "fumadocs-mdx": "^15.4.0",
+    "fumadocs-ui": "^16.15.10",
+    "image-budget": "workspace:*",
+    "lucide-react": "^1.38.0",
+    "next": "^16.3.5",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/mdx": "^2.0.14",
+    "@types/node": "^26.5.1",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "postcss": "^8.5.26",
+    "serve": "^14.2.6",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^7.0.2",
+    "wrangler": "^4.131.1"
+  }
+}

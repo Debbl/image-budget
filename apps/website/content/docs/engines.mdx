@@ -1,0 +1,114 @@
+---
+title: Engines
+description: Canvas by default, jSquash for AVIF, and what each one costs
+---
+
+An engine encodes once at a given quality. It does not search, resize
+independently of the plan, or decide anything about budgets - that all lives
+in `compress`, which is the only layer that can report on itself honestly.
+
+|                     | `canvasEngine`               | `jsquashEngine`                  |
+| ------------------- | ---------------------------- | -------------------------------- |
+| import              | `image-budget`               | `image-budget/jsquash`           |
+| bundle cost         | none, it is native           | WASM per codec, loaded on demand |
+| formats             | whatever the browser encodes | JPEG, WebP, AVIF                 |
+| AVIF                | rarely                       | always                           |
+| speed               | fast                         | slower, sometimes much           |
+| silent PNG fallback | possible, so it is checked   | impossible                       |
+
+## `canvasEngine` (default)
+
+`OffscreenCanvas.convertToBlob`. Probed once per session by encoding an 8x8
+canvas to each candidate format and reading the type back - the only way to
+know, since an unsupported type does not throw, it returns PNG.
+
+That same check runs again after the real encode. Probing and verifying are
+the same question asked at two different times, so they share one primitive.
+
+## `jsquashEngine`
+
+```ts
+import { jsquashEngine } from 'image-budget/jsquash'
+```
+
+Peer dependencies, all optional - install only what you encode:
+
+```bash
+pnpm add @jsquash/avif @jsquash/webp @jsquash/jpeg
+```
+
+Its probe asks the module graph rather than the platform: a codec either
+shipped in your bundle or it didn't. An unresolved optional peer is the only
+way a format goes missing here. And because the blob's type is asserted from
+the codec's own output, the silent-PNG failure cannot happen on this path.
+
+### AVIF wants two response headers
+
+jSquash encodes AVIF multithreaded when it can, and that needs
+`SharedArrayBuffer`, which needs the page served with:
+
+```text
+Cross-Origin-Opener-Policy: same-origin
+Cross-Origin-Embedder-Policy: require-corp
+```
+
+Without them AVIF still works, single-threaded, several times slower. These
+are site-wide headers with real consequences for embeds and third-party
+scripts, so they are usually not a decision a library can make for you -
+which is why this is documented rather than required.
+
+### Attempts cost more here
+
+One AVIF encode of a 12MP photo is seconds, not milliseconds. The search
+already accounts for this: it seeds at quality 0.75 rather than the midpoint,
+accepts anything inside `tolerance` of the budget, and probes the quality
+floor before bisecting so a hopeless range costs one encode instead of six.
+Lower `maxAttempts` further if you are compressing on a slow device.
+
+## Bundlers
+
+`@jsquash/*` ships emscripten glue plus `.wasm` assets, and not every bundler
+handles that unattended.
+
+**Turbopack stalls.** A `next build` that can reach
+`import('image-budget/jsquash')` sits in "Creating an optimized production
+build" indefinitely - measured at ten minutes with the CPU idle, so it is
+blocked rather than slow. The docs site you are reading works around it by
+not offering AVIF at all. Vite and Rollup are fine.
+
+If you need AVIF inside a Next.js app, run the codec in a Worker you build
+separately, or serve the WASM yourself and hand it to jSquash's `init()`:
+
+```ts
+import { init } from '@jsquash/avif/encode'
+
+await init(await fetch('/avif_enc.wasm').then((res) => res.arrayBuffer()))
+```
+
+That is also the escape hatch for a strict CSP, which will otherwise block
+inline WASM compilation.
+
+## Writing your own
+
+Anything satisfying `Engine` works, which is the seam's whole point:
+
+```ts
+import { compress } from 'image-budget'
+import type { Engine } from 'image-budget'
+
+const myEngine: Engine = {
+  id: 'mine',
+  preservesExif: true,
+  safeMaxPixels: 16_777_216,
+  probe: async () => new Set(['image/jpeg']),
+  attempt: async (source, plan) => ({ blob, width, height }),
+}
+
+await compress(file, { maxBytes: 200 * 1024, engine: myEngine })
+```
+
+An engine that preserves EXIF is the natural place to wrap a library like
+`browser-image-compression`. Note that it runs its own size search, so
+driving it through `attempt` means keeping it in single-shot mode
+(`maxSizeMB: Infinity`, `alwaysKeepResolution: true`, `initialQuality: q`) -
+two nested searches would make `result.attempts` a fiction.

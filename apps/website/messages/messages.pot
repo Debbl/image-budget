@@ -1,0 +1,139 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language: en\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#: src/app/[lang]/(home)/page.tsx:12
+msgid "Silence becomes data"
+msgstr ""
+
+#: src/app/[lang]/(home)/page.tsx:13
+msgid ""
+"Ask for AVIF and get PNG, and nothing throws. So the format is read back "
+"off the blob, and result.degraded is empty only when the output is exactly "
+"what you asked for."
+msgstr ""
+
+#: src/app/[lang]/(home)/page.tsx:16
+msgid "A byte budget, not a quality number"
+msgstr ""
+
+#: src/app/[lang]/(home)/page.tsx:17
+msgid ""
+"Quality is bisected to the largest size that fits, then the image is shrunk "
+"if quality alone cannot get there. Two axes, a capped attempt count, and "
+"the count is reported."
+msgstr ""
+
+#: src/app/[lang]/(home)/page.tsx:20
+msgid "HEIC without shipping libheif"
+msgstr ""
+
+#: src/app/[lang]/(home)/page.tsx:21
+msgid ""
+"Detected from the file's magic bytes, since iOS often leaves the mime type "
+"blank, and decoded through heic-to imported on demand."
+msgstr ""
+
+#: src/app/[lang]/(home)/page.tsx:24
+msgid "Zero dependencies by default"
+msgstr ""
+
+#: src/app/[lang]/(home)/page.tsx:25
+msgid ""
+"The canvas engine is native. WASM codecs live behind a separate entry "
+"point, so AVIF costs a bundle only where it is used."
+msgstr ""
+
+#: src/app/[lang]/(home)/page.tsx:33
+msgid ""
+"Compress an image to a byte budget in the browser - and find out what "
+"actually happened."
+msgstr ""
+
+#: src/app/[lang]/(home)/page.tsx:43
+msgid "Try it here"
+msgstr ""
+
+#: src/app/[lang]/(home)/page.tsx:49
+msgid "Read the docs"
+msgstr ""
+
+#: src/app/[lang]/playground/page.with.tsx:11
+#: src/app/[lang]/playground/page.with.tsx:21
+msgid "Playground"
+msgstr ""
+
+#: src/app/[lang]/playground/page.with.tsx:12
+msgid "Squeeze an image under a byte budget in your own browser."
+msgstr ""
+
+#: src/app/[lang]/playground/page.with.tsx:23
+msgid ""
+"Pick an image and watch the search run. Everything below is the real "
+"{appName} running in this tab - no server, no upload."
+msgstr ""
+
+#: src/app/layout.with.tsx:22
+msgid ""
+"Compress an image to a byte budget in the browser, and find out what "
+"actually happened."
+msgstr ""
+
+#: src/components/playground.tsx:63
+msgid "Budget"
+msgstr ""
+
+#: src/components/playground.tsx:78
+#: src/components/playground.tsx:145
+msgid "Format"
+msgstr ""
+
+#: src/components/playground.tsx:103
+msgid ""
+"Nothing is uploaded - the whole thing runs in this tab. HEIC from an iPhone "
+"works too."
+msgstr ""
+
+#: src/components/playground.tsx:106
+msgid ""
+"AVIF is not offered here: it needs the jSquash engine, which this "
+"statically exported site cannot bundle."
+msgstr ""
+
+#: src/components/playground.tsx:109
+msgid "Encoding..."
+msgstr ""
+
+#: src/components/playground.tsx:139
+msgid "Original"
+msgstr ""
+
+#: src/components/playground.tsx:140
+msgid "Result"
+msgstr ""
+
+#: src/components/playground.tsx:142
+msgid "Saved"
+msgstr ""
+
+#: src/components/playground.tsx:147
+msgid "Dimensions"
+msgstr ""
+
+#: src/components/playground.tsx:151
+msgid "Encodes"
+msgstr ""
+
+#: src/components/playground.tsx:160
+msgid "Exactly what was requested."
+msgstr ""
+
+#: src/components/playground.tsx:164
+msgid "Not quite what was requested:"
+msgstr ""

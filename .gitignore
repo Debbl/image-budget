@@ -1,0 +1,11 @@
+node_modules
+dist
+.next
+.output
+.source
+apps/website/out
+*.tsbuildinfo
+*.tgz
+*.log
+.wrangler
+.DS_Store

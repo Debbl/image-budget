@@ -1,0 +1,109 @@
+---
+title: API
+description: 一个函数，以及一个不会骗你的结果
+---
+
+## `compress(input, options?)`
+
+```ts
+compress(input: Blob, options?: Options): Promise<Result>
+```
+
+只在根本没有结果时抛错 —— 解不开的文件、缺失的 codec、被 abort 的信号。**没达到
+预算不抛错**，它是一个 `Result`：逼调用方用 `try`/`catch` 去接一张完全可用的图，
+形状就错了。
+
+## `Options`
+
+| 选项           | 默认     |                                                        |
+| -------------- | -------- | ------------------------------------------------------ |
+| `maxBytes`     | 无       | 预算。不给就只按最高质量编一次。                       |
+| `maxDimension` | 无       | 最长边上限，编码前生效。                               |
+| `format`       | `'auto'` | `'auto'`，或显式 `image/jpeg \| png \| webp \| avif`。 |
+| `preserveExif` | `false`  | 请求保留元数据。引擎做不到时记入 degraded。            |
+| `maxAttempts`  | `6`      | 整轮搜索的编码次数上限。                               |
+| `tolerance`    | `0.85`   | 结果落进 `[tolerance * maxBytes, maxBytes]` 就停。     |
+| `signal`       | 无       | 在每次尝试之间检查。                                   |
+| `engine`       | canvas   | 要 AVIF 就传 `jsquashEngine`。                         |
+
+### `format: 'auto'`
+
+优先 WebP，并且**绝不把可能透明的图压平**。只有 JPEG 输入可以确定不透明；其他格式
+都可能带 alpha，而查清楚要付一次全像素扫描的代价 —— 这个问题可以免费地保守回答。
+所以 PNG 永远不会自动转成 JPEG：那会把透明区涂成黑色，而且是静默的。
+
+显式要 `image/jpeg` 可以覆盖这个行为。那时压平是你的决定，而不是库的事故。
+
+### `tolerance`
+
+最后几个百分点的质量要用整次编码来换。当一次 AVIF 尝试是秒级时，立刻停在预算的
+88% 比三次尝试后停在 99% 划算。愿意花时间就设成 `0.99`。
+
+## `Result`
+
+```ts
+interface Result {
+  blob: Blob
+  format: string // 从 blob 上读回来的，绝不回显请求
+  bytes: number
+  width: number
+  height: number
+  engine: string
+  attempts: number // 搜索实际跑了几次编码
+  degraded: Degradation[]
+}
+```
+
+## `Degradation`
+
+`degraded` 是空数组，是你唯一能确认输出如你所愿的依据。里面每一项都是一件本来会
+静默发生的事。
+
+```ts
+type Degradation =
+  | { kind: 'format'; want: string; got: string }
+  | { kind: 'exif'; reason: 'engine-cannot-preserve' }
+  | { kind: 'overshoot'; maxBytes: number; got: number }
+  | {
+      kind: 'dimension'
+      reason: 'engine-pixel-ceiling' | 'budget'
+      from: readonly [number, number]
+      to: readonly [number, number]
+    }
+```
+
+**`format`** —— 要么引擎编不了你要的格式（探测阶段就知道，编码之前），要么它声称
+编了但没有（编码后读 `blob.type` 抓到）。两种情况以同一种方式浮现。
+
+**`exif`** —— 你传了 `preserveExif`，而选中的引擎只持有像素、不持有元数据。注意
+**方向不会丢**：解码时通过 `imageOrientation: 'from-image'` 把旋转烧进了像素，所以
+即使 EXIF 标签没了，图也不会躺倒。
+
+**`overshoot`** —— 在尝试过的所有尺寸上，没有任何质量能进预算。`blob` 是产出过的
+最小结果，所以你仍然可以上传、告警，或者拒绝。
+
+**`dimension`** —— 图被缩小了。`reason: 'budget'` 表示你要求的，或者搜索用尽了质量
+轴开始缩图。`'engine-pixel-ceiling'` 表示引擎在自保：Safari 超过约 16.7M 像素会返回
+空白 canvas 而不是抛异常，所以这个上限关乎正确性，不是性能。
+
+## `Engine`
+
+seam 所在。刻意设计成单次编码 —— 引擎按给定质量编一次，对预算没有意见，因为搜索
+是唯一能如实汇报自身的地方。
+
+```ts
+interface Engine {
+  id: string
+  preservesExif: boolean
+  safeMaxPixels: number
+  probe: () => Promise<ReadonlySet<Format>>
+  attempt: (source: ImageBitmap, plan: Plan) => Promise<Attempt>
+}
+```
+
+内置两个，见 [引擎](/zh/docs/engines)。
+
+## 其他导出
+
+`decode`、`decodeNative`、`decodeHeic`、`isHeic`、`canvasEngine`。自己搭管线时有用；
+用 `compress` 不需要它们。

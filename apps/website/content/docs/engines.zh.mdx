@@ -1,0 +1,105 @@
+---
+title: 引擎
+description: 默认 canvas，AVIF 用 jSquash，各自的代价
+---
+
+引擎按给定质量编一次。它不做搜索、不脱离 plan 自行缩放、不对预算做任何决定 ——
+那些都在 `compress` 里，因为它是唯一能如实汇报自身的那一层。
+
+|                | `canvasEngine` | `jsquashEngine`                |
+| -------------- | -------------- | ------------------------------ |
+| 导入           | `image-budget` | `image-budget/jsquash`         |
+| 体积代价       | 无，浏览器原生 | 每个 codec 一份 WASM，按需加载 |
+| 格式           | 浏览器能编的   | JPEG、WebP、AVIF               |
+| AVIF           | 很少能         | 总是能                         |
+| 速度           | 快             | 慢，有时慢很多                 |
+| 静默退化成 PNG | 可能，所以要查 | 不可能                         |
+
+## `canvasEngine`（默认）
+
+`OffscreenCanvas.convertToBlob`。每个会话探测一次：拿一张 8×8 的 canvas 对每个候选
+格式编一遍，再把类型读回来 —— 这是唯一的办法，因为不支持的格式不会抛错，它会给你
+PNG。
+
+真正编码之后还会再查一次同一件事。探测和验证是同一个问题在两个时刻被问，所以它们
+共用一个原语。
+
+## `jsquashEngine`
+
+```ts
+import { jsquashEngine } from 'image-budget/jsquash'
+```
+
+peer 依赖，全部可选 —— 只装你要编的：
+
+```bash
+pnpm add @jsquash/avif @jsquash/webp @jsquash/jpeg
+```
+
+它的探测问的是模块图而不是平台：codec 要么打进了你的包，要么没有。没装上的可选
+peer 是这条路径上格式缺失的唯一原因。而且因为 blob 的类型是从 codec 自己的输出断言
+出来的，静默退化成 PNG 这件事在这条路径上不可能发生。
+
+### AVIF 需要两个响应头
+
+jSquash 在条件允许时会多线程编 AVIF，这需要 `SharedArrayBuffer`，而后者要求页面带上：
+
+```text
+Cross-Origin-Opener-Policy: same-origin
+Cross-Origin-Embedder-Policy: require-corp
+```
+
+没有它们 AVIF 依然能用，只是单线程，慢好几倍。这是站点级的响应头，对 iframe 嵌入和
+第三方脚本有真实影响，通常不是一个库能替你做的决定 —— 所以这里只是写进文档，而不是
+强制要求。
+
+### 这里的 attempt 更贵
+
+一次 12MP 照片的 AVIF 编码是秒级，不是毫秒级。搜索本身已经考虑到了：起点播在质量
+0.75 而不是区间中点、落进预算的 `tolerance` 带就接受、并且在二分之前先探质量下限，
+所以一个无解的区间只花一次编码而不是六次。设备慢的话可以进一步降低 `maxAttempts`。
+
+## 打包器
+
+`@jsquash/*` 带的是 emscripten glue 加 `.wasm` 资源，不是每个打包器都能无人值守地
+处理好。
+
+**Turbopack 会卡住。** 只要 `next build` 能走到 `import('image-budget/jsquash')`，
+它就会永久停在 "Creating an optimized production build" —— 实测十分钟、CPU 空转，
+所以是阻塞而不是慢。你正在读的这个文档站的绕法是干脆不提供 AVIF。Vite 和 Rollup
+没问题。
+
+如果非要在 Next.js 应用里用 AVIF：把 codec 放进一个单独构建的 Worker，或者自己托管
+那份 WASM 再交给 jSquash 的 `init()`：
+
+```ts
+import { init } from '@jsquash/avif/encode'
+
+await init(await fetch('/avif_enc.wasm').then((res) => res.arrayBuffer()))
+```
+
+这同时也是严格 CSP 下的逃生口 —— 否则内联 WASM 编译会被拦掉。
+
+## 自己写一个
+
+任何满足 `Engine` 的东西都能用，这正是这个 seam 的意义：
+
+```ts
+import { compress } from 'image-budget'
+import type { Engine } from 'image-budget'
+
+const myEngine: Engine = {
+  id: 'mine',
+  preservesExif: true,
+  safeMaxPixels: 16_777_216,
+  probe: async () => new Set(['image/jpeg']),
+  attempt: async (source, plan) => ({ blob, width, height }),
+}
+
+await compress(file, { maxBytes: 200 * 1024, engine: myEngine })
+```
+
+能保留 EXIF 的引擎，是包装 `browser-image-compression` 这类库的自然位置。注意它自带
+体积搜索，所以通过 `attempt` 驱动它意味着要让它保持单次模式
+（`maxSizeMB: Infinity`、`alwaysKeepResolution: true`、`initialQuality: q`）——
+两层嵌套的搜索会让 `result.attempts` 变成一个假数字。

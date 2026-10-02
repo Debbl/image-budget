@@ -1,0 +1,7 @@
+packages:
+  - packages/*
+  - playground/*
+  - apps/*
+allowBuilds:
+  esbuild: true
+  workerd: true

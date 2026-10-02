@@ -1,0 +1,120 @@
+---
+title: API
+description: One function, and a result that does not lie
+---
+
+## `compress(input, options?)`
+
+```ts
+compress(input: Blob, options?: Options): Promise<Result>
+```
+
+Throws only when there is no result at all - a file that cannot be decoded, a
+missing codec, an aborted signal. A budget it could not meet is a `Result`,
+not an exception: forcing a `try`/`catch` around a perfectly usable image
+would be the wrong shape.
+
+## `Options`
+
+| option         | default  |                                                                  |
+| -------------- | -------- | ---------------------------------------------------------------- |
+| `maxBytes`     | none     | The budget. Without it a single encode runs at top quality.      |
+| `maxDimension` | none     | Longest-edge cap, applied before encoding.                       |
+| `format`       | `'auto'` | `'auto'`, or an explicit `image/jpeg \| png \| webp \| avif`.    |
+| `preserveExif` | `false`  | Ask to keep metadata. Reported as degraded if the engine cannot. |
+| `maxAttempts`  | `6`      | Ceiling on encodes across the whole search.                      |
+| `tolerance`    | `0.85`   | Stop once a result lands in `[tolerance * maxBytes, maxBytes]`.  |
+| `signal`       | none     | Checked between attempts.                                        |
+| `engine`       | canvas   | Pass `jsquashEngine` for AVIF.                                   |
+
+### `format: 'auto'`
+
+Prefers WebP, and **never flattens an image that might be transparent**. Only
+JPEG input is provably opaque; anything else could carry alpha, and finding
+out costs a full pixel scan to answer a question that can be answered
+conservatively for free. So a PNG never auto-converts to JPEG - it would paint
+the transparent areas black, silently.
+
+Asking for `image/jpeg` explicitly overrides that. Then flattening is your
+decision rather than the library's accident.
+
+### `tolerance`
+
+The last few percent of quality costs whole encodes. When one AVIF attempt is
+seconds, landing at 88% of the budget immediately beats landing at 99% three
+attempts later. Set it to `0.99` if you would rather spend the time.
+
+## `Result`
+
+```ts
+interface Result {
+  blob: Blob
+  format: string // read off the blob, never echoed from the request
+  bytes: number
+  width: number
+  height: number
+  engine: string
+  attempts: number // how many encodes the search actually ran
+  degraded: Degradation[]
+}
+```
+
+## `Degradation`
+
+An empty `degraded` array is the only assurance that the output is what you
+asked for. Each entry is something that would otherwise have happened in
+silence.
+
+```ts
+type Degradation =
+  | { kind: 'format'; want: string; got: string }
+  | { kind: 'exif'; reason: 'engine-cannot-preserve' }
+  | { kind: 'overshoot'; maxBytes: number; got: number }
+  | {
+      kind: 'dimension'
+      reason: 'engine-pixel-ceiling' | 'budget'
+      from: readonly [number, number]
+      to: readonly [number, number]
+    }
+```
+
+**`format`** — either the engine cannot emit what you asked for (known from
+the probe, before encoding) or it claimed to and didn't (caught by reading
+`blob.type` after). Both surface the same way.
+
+**`exif`** — you passed `preserveExif` and the chosen engine holds pixels, not
+metadata. Note that orientation is _not_ lost: it is baked into the pixels
+during decode via `imageOrientation: 'from-image'`, so the image is never
+sideways even though the EXIF tag is gone.
+
+**`overshoot`** — no quality at any attempted size fit the budget. `blob` is
+the smallest output produced, so you can still upload it, warn, or refuse.
+
+**`dimension`** — the image was scaled down. `reason: 'budget'` means you asked
+for it, or the search ran out of quality and started shrinking.
+`'engine-pixel-ceiling'` means the engine protected itself: Safari returns a
+blank canvas past roughly 16.7M pixels instead of throwing, so this cap is
+about correctness, not speed.
+
+## `Engine`
+
+The seam. Single-shot by design - an engine encodes once at the quality it is
+handed and has no opinion about budgets, because the search is the only place
+that can report honestly on itself.
+
+```ts
+interface Engine {
+  id: string
+  preservesExif: boolean
+  safeMaxPixels: number
+  probe: () => Promise<ReadonlySet<Format>>
+  attempt: (source: ImageBitmap, plan: Plan) => Promise<Attempt>
+}
+```
+
+Two ship in the box - see [Engines](/docs/engines).
+
+## Also exported
+
+`decode`, `decodeNative`, `decodeHeic`, `isHeic`, `canvasEngine`. Useful if
+you are building your own pipeline; not needed for `compress`.

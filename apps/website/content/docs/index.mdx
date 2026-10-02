@@ -1,0 +1,98 @@
+---
+title: Getting started
+description: Compress to a byte budget, and read what actually happened
+---
+
+## Install
+
+```bash
+pnpm add image-budget
+```
+
+No dependencies. The default path is `createImageBitmap` plus
+`OffscreenCanvas`, both native.
+
+## Squeeze a file under a budget
+
+```ts
+import { compress } from 'image-budget'
+
+const result = await compress(file, {
+  maxBytes: 200 * 1024,
+  maxDimension: 2048,
+})
+
+await upload(result.blob)
+```
+
+`result.blob` is the largest output that fit 200 kB. Getting there took a
+handful of encodes; `result.attempts` says how many.
+
+## Then check what you got
+
+This is the part that matters, and the reason the library exists:
+
+```ts
+if (result.degraded.length > 0) {
+  console.warn('not what we asked for', result.degraded)
+}
+```
+
+Every failure in browser image compression is silent. `canvas.convertToBlob`
+hands back PNG for a format it cannot encode, without an error. EXIF
+disappears the moment pixels hit a canvas. An image past Safari's pixel
+ceiling renders blank rather than throwing. A budget that no quality can meet
+just... doesn't get met.
+
+So `compress` never echoes your request back at you. `result.format` is read
+off the blob, and anything that did not go to plan is an entry in
+`result.degraded`:
+
+```ts
+;[
+  { kind: 'format', want: 'image/avif', got: 'image/webp' },
+  { kind: 'exif', reason: 'engine-cannot-preserve' },
+]
+```
+
+An empty array is the only way to know it worked.
+
+## HEIC
+
+Nothing to configure. HEIC is detected from the file's magic bytes - iOS
+routinely reports an empty mime type for camera-roll picks - and decoded
+through [`heic-to`](https://github.com/hoppergee/heic-to), which is imported
+on demand so a bundle only pays for libheif when a HEIC actually shows up.
+
+Install it if you need it:
+
+```bash
+pnpm add heic-to
+```
+
+## AVIF
+
+Browsers decode AVIF far more widely than they encode it, so AVIF goes
+through the [jSquash](https://github.com/jamsinclair/jsquash) WASM codecs
+behind a second entry point:
+
+```ts
+import { compress } from 'image-budget'
+import { jsquashEngine } from 'image-budget/jsquash'
+
+const result = await compress(file, {
+  maxBytes: 100 * 1024,
+  format: 'image/avif',
+  engine: jsquashEngine,
+})
+```
+
+See [Engines](/docs/engines) for what that costs and the response headers it
+wants.
+
+## What this is not
+
+Display-side work - format negotiation per request, multiple sizes, a CDN
+cache - does not belong in a browser. Point an image service at your origin
+and let it do that. This library is for the upload path: make the bytes
+leaving the device smaller, and know what you sent.
