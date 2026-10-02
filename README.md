@@ -10,9 +10,10 @@ packages/image-budget   the package
   src/core/             the strategy: byte-budget search, format planning, verification
   src/engines/          canvas (native) and jSquash (opt-in subpath)
   src/decode/           native decode, plus the HEIC branch
+  src/worker/           the same pipeline, off the main thread
 apps/website            bilingual docs + a playground that runs in the page
 playground/nextjs       App Router, server page + client picker
-playground/vite         the same thing as a plain SPA
+playground/vite         the same thing as a plain SPA, through a worker
 ```
 
 ## Why
@@ -59,6 +60,25 @@ that returns blobs of a known size - no canvas, no codec, no fixtures.
 Engines are single-shot on purpose: an engine encodes once at the quality it is
 handed and has no opinion about budgets, because the search is the only layer
 that can report honestly on itself.
+
+## Off the main thread
+
+Encoding is CPU-bound and synchronous inside the codec, so two images on the
+main thread fight each other and the page. The pipeline only ever used
+`createImageBitmap`, `OffscreenCanvas` and `Blob` - all present in a worker,
+all transferable - so placement was never an interface decision:
+
+```ts
+import { createCompressor } from 'image-budget/worker'
+
+const compressor = createCompressor()
+const result = await compressor.compress(file, { maxBytes: 200 * 1024 })
+```
+
+`engine` and `signal` are the two options that cannot cross a postMessage
+boundary; the types say so, and `signal` is relayed rather than dropped.
+Turbopack will not build a `new Worker(new URL(...))` at all - see
+[the workers page](https://image-budget.aiwan.run/docs/workers).
 
 ## Working on it
 

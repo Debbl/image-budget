@@ -1,98 +1,92 @@
-import { compress } from 'image-budget'
-import { useState } from 'react'
+import { createCompressor } from 'image-budget/worker'
+import { useEffect, useRef, useState } from 'react'
 import type { Result } from 'image-budget'
 
 const BUDGET_KB = 200
 
-export function App() {
-  const [result, setResult] = useState<Result | null>(null)
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [original, setOriginal] = useState<number | null>(null)
+// Vite understands `new Worker(new URL(...))` natively, so the worker file
+// below is compiled and served for us. Next.js/Turbopack does not - see
+// docs/engines.
+function spawn() {
+  return new Worker(new URL('./compress.worker.ts', import.meta.url), {
+    type: 'module',
+  }) as never
+}
 
-  async function onPick(file: File) {
-    setBusy(true)
+export function App() {
+  const compressor = useRef<ReturnType<typeof createCompressor> | null>(null)
+  compressor.current ??= createCompressor({ spawn, size: 2 })
+  useEffect(() => () => compressor.current?.terminate(), [])
+
+  const [results, setResults] = useState<
+    Array<{ name: string; from: number; result: Result; ms: number }>
+  >([])
+  const [error, setError] = useState<string | null>(null)
+
+  async function run(files: File[]) {
     setError(null)
-    setOriginal(file.size)
-    try {
-      setResult(
-        await compress(file, {
-          maxBytes: BUDGET_KB * 1024,
-          maxDimension: 2048,
-        }),
-      )
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause))
-      setResult(null)
-    } finally {
-      setBusy(false)
-    }
+    await Promise.all(
+      files.map(async (file) => {
+        const started = performance.now()
+        try {
+          const result = await compressor.current!.compress(file, {
+            maxBytes: BUDGET_KB * 1024,
+            maxDimension: 2048,
+          })
+          setResults((previous) => [
+            ...previous,
+            {
+              name: file.name,
+              from: file.size,
+              result,
+              ms: Math.round(performance.now() - started),
+            },
+          ])
+        } catch (cause) {
+          setError(cause instanceof Error ? cause.message : String(cause))
+        }
+      }),
+    )
   }
 
   return (
     <main>
-      <h1>image-budget</h1>
+      <h1>image-budget / Vite + Worker</h1>
       <p>
-        Pick an image. It gets squeezed under {BUDGET_KB} kB - HEIC included.
+        Every encode runs in a worker, two at a time. Budget: {BUDGET_KB} kB.
       </p>
 
       <input
         type='file'
+        multiple
         accept='image/*,.heic,.heif'
-        onChange={(event) => {
-          const file = event.target.files?.[0]
-          if (file) void onPick(file)
-        }}
+        onChange={(event) => void run([...(event.target.files ?? [])])}
       />
 
-      {busy && <p>working...</p>}
       {error && <p style={{ color: 'crimson' }}>{error}</p>}
 
-      {result && (
-        <>
-          <table>
-            <tbody>
-              <Row label='original' value={kb(original ?? 0)} />
-              <Row label='result' value={kb(result.bytes)} />
-              <Row label='format' value={result.format} />
-              <Row label='size' value={`${result.width} x ${result.height}`} />
-              <Row label='engine' value={result.engine} />
-              <Row label='encodes' value={String(result.attempts)} />
-            </tbody>
-          </table>
-
-          {/* The whole point of the library: an empty list is the good case. */}
-          {result.degraded.length === 0 ? (
+      {results.map((entry) => (
+        <section key={entry.name + entry.result.bytes}>
+          <h2>{entry.name}</h2>
+          <p>
+            {kb(entry.from)} → <strong>{kb(entry.result.bytes)}</strong> ·{' '}
+            {entry.result.format} · {entry.result.width}×{entry.result.height} ·{' '}
+            {entry.result.attempts} encodes · {entry.ms} ms
+          </p>
+          {entry.result.degraded.length === 0 ? (
             <p>exactly as requested</p>
           ) : (
             <ul>
-              {result.degraded.map((entry) => (
-                <li key={entry.kind + JSON.stringify(entry)}>
-                  <code>{JSON.stringify(entry)}</code>
+              {entry.result.degraded.map((item) => (
+                <li key={JSON.stringify(item)}>
+                  <code>{JSON.stringify(item)}</code>
                 </li>
               ))}
             </ul>
           )}
-
-          <img
-            src={URL.createObjectURL(result.blob)}
-            alt=''
-            style={{ maxWidth: '100%' }}
-          />
-        </>
-      )}
+        </section>
+      ))}
     </main>
-  )
-}
-
-function Row({ label, value }: { label: string; value: string }) {
-  return (
-    <tr>
-      <td>{label}</td>
-      <td>
-        <strong>{value}</strong>
-      </td>
-    </tr>
   )
 }
 

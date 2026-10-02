@@ -1,0 +1,79 @@
+---
+title: Worker
+description: 把编码挪出主线程
+---
+
+编码是 CPU 密集的，而且在 codec 内部是同步的。两张 900×900 的图在主线程上压缩，
+在 dev 构建里各花了约 **4.6 秒** —— 不是因为哪一张慢，而是因为它们和页面在抢同
+一个线程。
+
+整条管线只用到 `createImageBitmap`、`OffscreenCanvas` 和 `Blob`，它们在 worker
+里都存在、也都可转移。所以「放在哪」从来不是一个接口决策，这个模块是包装而不是
+第二份实现。
+
+```ts
+import { createCompressor } from 'image-budget/worker'
+
+const compressor = createCompressor()
+const result = await compressor.compress(file, { maxBytes: 200 * 1024 })
+compressor.terminate()
+```
+
+worker 是惰性创建的，而且只创建到出现争抢为止 —— 只压一张图的页面只付一个线程的
+代价。超过 `size` 的任务排队。
+
+## 跨越这条缝时会变的东西
+
+有两个选项过不了 `postMessage` 边界，而且类型直接说明了这一点，不会留到运行时才炸：
+
+|          |                                                                                                                                             |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `engine` | 里面是函数，`structuredClone` 带不过去。改为在 worker 文件里配置，见下。                                                                    |
+| `signal` | 同样不可克隆。你照常传，它会被中继成一条 abort 消息，worker 中止自己的 controller —— 于是 `seek` 在两次尝试之间停下来，和主线程上完全一样。 |
+
+其余的 `maxBytes`、`maxDimension`、`format`、`preserveExif`、`maxAttempts`、
+`tolerance` 原样传递，`Result` 也完整返回，包括 `Blob`。
+
+## 打包器
+
+**Vite、Rollup、webpack**：什么都不用做。默认的 `spawn` 用的是
+`new Worker(new URL('./worker-entry.mjs', import.meta.url), { type: 'module' })`
+这种它们都认识的形式。
+
+**Turbopack**：只要生产构建能走到 `new Worker(new URL(...))`，它就跑不完 ——
+实测停在 "Creating an optimized production build" 十分钟、CPU 空转。把 worker
+文件挪进应用自己的源码目录也不管用；问题出在这个模式本身，而不是它的位置。在这
+一点改变之前，Next.js 上请直接用 `compress`，或者自己提供一个用别的方式构造
+worker 的 `spawn`。
+
+## 自己写 worker 文件
+
+`spawn` 是逃生口，同时也是 AVIF 的用法 —— 默认 worker 刻意只带 canvas，这样打包
+器就不会为一个根本不要 AVIF 的应用发射 WASM 资源。
+
+```ts
+// app/compress.worker.ts
+import { jsquashEngine } from 'image-budget/jsquash'
+import { serve } from 'image-budget/serve'
+
+serve(jsquashEngine)
+```
+
+```ts
+import { createCompressor } from 'image-budget/worker'
+
+const compressor = createCompressor({
+  size: 2,
+  spawn: () =>
+    new Worker(new URL('./compress.worker.ts', import.meta.url), {
+      type: 'module',
+    }),
+})
+```
+
+`serve()` 不传参数就是 canvas 引擎 —— 和默认 worker 跑的是同一个。
+
+## 池大小
+
+默认为 2，单核机器上为 1。worker 数超过核数只会增加争抢而不是吞吐，因为每一个都
+在满负荷编码。

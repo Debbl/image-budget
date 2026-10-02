@@ -29,6 +29,8 @@
   "exports": {
     ".": "./dist/index.mjs",
     "./jsquash": "./dist/jsquash.mjs",
+    "./worker": "./dist/worker.mjs",
+    "./serve": "./dist/serve.mjs",
     "./package.json": "./package.json"
   },
   "scripts": {

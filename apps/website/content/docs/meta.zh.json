@@ -1,4 +1,10 @@
 {
   "title": "文档",
-  "pages": ["index", "api", "engines", "external:[Playground](/zh/playground)"]
+  "pages": [
+    "index",
+    "api",
+    "engines",
+    "workers",
+    "external:[Playground](/zh/playground)"
+  ]
 }

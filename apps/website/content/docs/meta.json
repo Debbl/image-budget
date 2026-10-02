@@ -1,4 +1,10 @@
 {
   "title": "Documentation",
-  "pages": ["index", "api", "engines", "external:[Playground](/playground)"]
+  "pages": [
+    "index",
+    "api",
+    "engines",
+    "workers",
+    "external:[Playground](/playground)"
+  ]
 }

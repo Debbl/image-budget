@@ -1,0 +1,86 @@
+---
+title: Workers
+description: Move the encodes off the main thread
+---
+
+Encoding is CPU-bound and synchronous inside the codec. Two 900×900 images
+compressed on the main thread took about **4.6 seconds each** in a dev build -
+not because either was slow, but because they and the page were competing for
+one thread.
+
+The pipeline only ever used `createImageBitmap`, `OffscreenCanvas` and `Blob`,
+all of which exist in a worker and all of which are transferable. So placement
+was never an interface decision, and this module is a wrapper rather than a
+second implementation.
+
+```ts
+import { createCompressor } from 'image-budget/worker'
+
+const compressor = createCompressor()
+const result = await compressor.compress(file, { maxBytes: 200 * 1024 })
+compressor.terminate()
+```
+
+Workers are spawned lazily and only up to the point of contention, so a page
+that compresses one image pays for one thread. Jobs past `size` queue.
+
+## What changes across the seam
+
+Two options cannot cross a `postMessage` boundary, and the types say so
+rather than failing at runtime:
+
+|          |                                                                                                                                                                                                |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `engine` | holds functions, which `structuredClone` will not carry. Configure it in the worker file instead - see below.                                                                                  |
+| `signal` | not cloneable either. You still pass one; it is relayed as an abort message and the worker aborts its own controller, so `seek` stops between attempts exactly as it would on the main thread. |
+
+Everything else - `maxBytes`, `maxDimension`, `format`, `preserveExif`,
+`maxAttempts`, `tolerance` - passes through unchanged, and the `Result` comes
+back whole, `Blob` included.
+
+## Bundlers
+
+**Vite, Rollup, webpack**: nothing to do. The default `spawn` uses the
+`new Worker(new URL('./worker-entry.mjs', import.meta.url), { type: 'module' })`
+form they all recognise.
+
+**Turbopack**: it will not finish a production build that can reach a
+`new Worker(new URL(...))` - measured stalling for ten minutes at "Creating an
+optimized production build" with the CPU idle. Moving the worker into the
+app's own source tree does not help; it is the pattern, not the location.
+Until that changes, use `compress` directly on Next.js, or supply a `spawn`
+that builds the worker some other way.
+
+## Your own worker file
+
+`spawn` is the escape hatch, and it is also how AVIF works - the default
+worker is canvas-only on purpose, so that no bundler emits WASM assets for an
+app that never asked for them.
+
+```ts
+// app/compress.worker.ts
+import { jsquashEngine } from 'image-budget/jsquash'
+import { serve } from 'image-budget/serve'
+
+serve(jsquashEngine)
+```
+
+```ts
+import { createCompressor } from 'image-budget/worker'
+
+const compressor = createCompressor({
+  size: 2,
+  spawn: () =>
+    new Worker(new URL('./compress.worker.ts', import.meta.url), {
+      type: 'module',
+    }),
+})
+```
+
+`serve()` with no argument gives you the canvas engine - the same thing the
+default worker runs.
+
+## Pool size
+
+Defaults to two, or one on a single-core machine. More workers than cores adds
+contention rather than throughput, since every one of them is busy encoding.
