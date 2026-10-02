@@ -85,55 +85,95 @@ msgid ""
 "actually happened."
 msgstr "在浏览器里把图片压到目标体积，并且知道实际发生了什么。"
 
-#: src/components/playground.tsx:63
+#: src/components/playground.tsx:162
+#: src/components/playground.tsx:300
 msgid "Budget"
 msgstr "预算"
 
-#: src/components/playground.tsx:78
-#: src/components/playground.tsx:145
+#: src/components/playground.tsx:178
 msgid "Format"
 msgstr "格式"
 
-#: src/components/playground.tsx:103
-msgid ""
-"Nothing is uploaded - the whole thing runs in this tab. HEIC from an iPhone "
-"works too."
-msgstr "什么都不会上传 —— 全过程都在这个标签页里。iPhone 的 HEIC 也能处理。"
+#: src/components/playground.tsx:193
+msgid "Longest edge"
+msgstr "最长边"
 
-#: src/components/playground.tsx:106
+#: src/components/playground.tsx:233
+msgid "Drop, paste, or click to add images"
+msgstr "拖入、粘贴，或点击添加图片"
+
+#: src/components/playground.tsx:235
+msgid ""
+"Several at once is fine. HEIC from an iPhone works. Nothing is uploaded - "
+"it all runs in this tab."
+msgstr "可以一次多张。iPhone 的 HEIC 也能处理。什么都不会上传 —— 全在这个标签页里跑。"
+
+#: src/components/playground.tsx:249
 msgid ""
 "AVIF is not offered here: it needs the jSquash engine, which this "
 "statically exported site cannot bundle."
 msgstr "这里不提供 AVIF：它需要 jSquash 引擎，而这个静态导出的站点打不进去。"
 
-#: src/components/playground.tsx:109
+#: src/components/playground.tsx:290
 msgid "Encoding..."
 msgstr "编码中……"
 
-#: src/components/playground.tsx:139
-msgid "Original"
-msgstr "原图"
+#: src/components/playground.tsx:298
+msgid "Requested"
+msgstr "请求"
 
-#: src/components/playground.tsx:140
-msgid "Result"
-msgstr "结果"
+#: src/components/playground.tsx:299
+msgid "Final"
+msgstr "实际"
 
-#: src/components/playground.tsx:142
-msgid "Saved"
-msgstr "节省"
-
-#: src/components/playground.tsx:147
-msgid "Dimensions"
+#: src/components/playground.tsx:301
+msgid "Size"
 msgstr "尺寸"
 
-#: src/components/playground.tsx:151
+#: src/components/playground.tsx:302
 msgid "Encodes"
 msgstr "编码次数"
 
-#: src/components/playground.tsx:160
+#: src/components/playground.tsx:304
+msgid "Took"
+msgstr "耗时"
+
+#: src/components/playground.tsx:315
+msgid "format"
+msgstr "格式"
+
+#: src/components/playground.tsx:317
+msgid "EXIF dropped"
+msgstr "EXIF 已丢弃"
+
+#: src/components/playground.tsx:319
+msgid "over budget"
+msgstr "超出预算"
+
+#: src/components/playground.tsx:320
+msgid "scaled"
+msgstr "已缩放"
+
+#: src/components/playground.tsx:328
 msgid "Exactly what was requested."
 msgstr "完全如请求所愿。"
 
-#: src/components/playground.tsx:164
-msgid "Not quite what was requested:"
-msgstr "和请求有出入："
+#: src/components/playground.tsx:333
+msgid "Original"
+msgstr "原图"
+
+#: src/components/playground.tsx:334
+msgid "Result"
+msgstr "结果"
+
+#~ msgid "Nothing is uploaded - the whole thing runs in this tab. HEIC from an iPhone works too."
+#~ msgstr "什么都不会上传 —— 全过程都在这个标签页里。iPhone 的 HEIC 也能处理。"
+
+#~ msgid "Saved"
+#~ msgstr "节省"
+
+#~ msgid "Dimensions"
+#~ msgstr "尺寸"
+
+#~ msgid "Not quite what was requested:"
+#~ msgstr "和请求有出入："

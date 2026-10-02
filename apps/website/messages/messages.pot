@@ -85,55 +85,83 @@ msgid ""
 "actually happened."
 msgstr ""
 
-#: src/components/playground.tsx:63
+#: src/components/playground.tsx:162
+#: src/components/playground.tsx:300
 msgid "Budget"
 msgstr ""
 
-#: src/components/playground.tsx:78
-#: src/components/playground.tsx:145
+#: src/components/playground.tsx:178
 msgid "Format"
 msgstr ""
 
-#: src/components/playground.tsx:103
-msgid ""
-"Nothing is uploaded - the whole thing runs in this tab. HEIC from an iPhone "
-"works too."
+#: src/components/playground.tsx:193
+msgid "Longest edge"
 msgstr ""
 
-#: src/components/playground.tsx:106
+#: src/components/playground.tsx:233
+msgid "Drop, paste, or click to add images"
+msgstr ""
+
+#: src/components/playground.tsx:235
+msgid ""
+"Several at once is fine. HEIC from an iPhone works. Nothing is uploaded - "
+"it all runs in this tab."
+msgstr ""
+
+#: src/components/playground.tsx:249
 msgid ""
 "AVIF is not offered here: it needs the jSquash engine, which this "
 "statically exported site cannot bundle."
 msgstr ""
 
-#: src/components/playground.tsx:109
+#: src/components/playground.tsx:290
 msgid "Encoding..."
 msgstr ""
 
-#: src/components/playground.tsx:139
-msgid "Original"
+#: src/components/playground.tsx:298
+msgid "Requested"
 msgstr ""
 
-#: src/components/playground.tsx:140
-msgid "Result"
+#: src/components/playground.tsx:299
+msgid "Final"
 msgstr ""
 
-#: src/components/playground.tsx:142
-msgid "Saved"
+#: src/components/playground.tsx:301
+msgid "Size"
 msgstr ""
 
-#: src/components/playground.tsx:147
-msgid "Dimensions"
-msgstr ""
-
-#: src/components/playground.tsx:151
+#: src/components/playground.tsx:302
 msgid "Encodes"
 msgstr ""
 
-#: src/components/playground.tsx:160
+#: src/components/playground.tsx:304
+msgid "Took"
+msgstr ""
+
+#: src/components/playground.tsx:315
+msgid "format"
+msgstr ""
+
+#: src/components/playground.tsx:317
+msgid "EXIF dropped"
+msgstr ""
+
+#: src/components/playground.tsx:319
+msgid "over budget"
+msgstr ""
+
+#: src/components/playground.tsx:320
+msgid "scaled"
+msgstr ""
+
+#: src/components/playground.tsx:328
 msgid "Exactly what was requested."
 msgstr ""
 
-#: src/components/playground.tsx:164
-msgid "Not quite what was requested:"
+#: src/components/playground.tsx:333
+msgid "Original"
+msgstr ""
+
+#: src/components/playground.tsx:334
+msgid "Result"
 msgstr ""

@@ -2,196 +2,402 @@
 
 import { useI18n } from 'best-i18n/react/macro'
 import { compress } from 'image-budget'
-import { useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Result } from 'image-budget'
-
-const PRESETS = [
-  { label: '50 kB', maxBytes: 50 * 1024 },
-  { label: '150 kB', maxBytes: 150 * 1024 },
-  { label: '500 kB', maxBytes: 500 * 1024 },
-] as const
+import type { ChangeEvent, DragEvent, ReactNode } from 'react'
 
 // AVIF is deliberately absent: it needs the jSquash WASM engine, and
 // `@jsquash/*` stalls a Turbopack production build - see docs/engines. This
 // site is also a static export with no COOP/COEP, so AVIF would be
 // single-threaded anyway.
-type Formats = 'auto' | 'image/jpeg' | 'image/webp'
+type Format = 'auto' | 'image/webp' | 'image/jpeg' | 'image/png'
+
+interface Settings {
+  budgetKb: number
+  format: Format
+  maxDimension: number
+}
+
+interface Job {
+  id: string
+  file: File
+  /** Undefined while the search is still running. */
+  result?: Result
+  /** Wall-clock for the whole compress call, not just the encodes. */
+  ms?: number
+  error?: string
+  previewUrl: string
+  resultUrl?: string
+}
+
+const DEFAULTS: Settings = {
+  budgetKb: 150,
+  format: 'auto',
+  maxDimension: 2048,
+}
 
 export function Playground() {
   const t = useI18n()
+  const [settings, setSettings] = useState(DEFAULTS)
+  const [jobs, setJobs] = useState<Job[]>([])
+  const [dragging, setDragging] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
 
-  const [budget, setBudget] = useState<number>(PRESETS[1].maxBytes)
-  const [format, setFormat] = useState<Formats>('auto')
-  const [original, setOriginal] = useState<{
-    name: string
-    bytes: number
-  } | null>(null)
-  const [result, setResult] = useState<Result | null>(null)
-  const [url, setUrl] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  async function run(file: File) {
-    setBusy(true)
-    setError(null)
-    setOriginal({ name: file.name, bytes: file.size })
-
-    try {
-      const next = await compress(file, {
-        maxBytes: budget,
-        maxDimension: 2048,
-        format,
-      })
-
-      setResult(next)
-      setUrl((previous) => {
-        if (previous) URL.revokeObjectURL(previous)
-        return URL.createObjectURL(next.blob)
-      })
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause))
-      setResult(null)
-    } finally {
-      setBusy(false)
+  // Object URLs outlive React state, so they are revoked explicitly rather
+  // than left for the tab to reclaim.
+  const urls = useRef(new Set<string>())
+  const track = useCallback((url: string) => {
+    urls.current.add(url)
+    return url
+  }, [])
+  useEffect(() => {
+    const tracked = urls.current
+    return () => {
+      for (const url of tracked) URL.revokeObjectURL(url)
     }
+  }, [])
+
+  const run = useCallback(
+    async (job: Job, using: Settings) => {
+      const started = performance.now()
+      try {
+        const result = await compress(job.file, {
+          maxBytes: using.budgetKb * 1024,
+          maxDimension: using.maxDimension,
+          format: using.format,
+        })
+        const ms = Math.round(performance.now() - started)
+        const resultUrl = track(URL.createObjectURL(result.blob))
+
+        setJobs((previous) =>
+          previous.map((entry) =>
+            entry.id === job.id
+              ? { ...entry, result, ms, resultUrl, error: undefined }
+              : entry,
+          ),
+        )
+      } catch (cause) {
+        setJobs((previous) =>
+          previous.map((entry) =>
+            entry.id === job.id
+              ? {
+                  ...entry,
+                  result: undefined,
+                  error: cause instanceof Error ? cause.message : String(cause),
+                }
+              : entry,
+          ),
+        )
+      }
+    },
+    [track],
+  )
+
+  const add = useCallback(
+    (files: File[]) => {
+      const images = files.filter(
+        (file) =>
+          file.type.startsWith('image/') || /\.hei[cf]$/i.test(file.name),
+      )
+      if (images.length === 0) return
+
+      const next = images.map((file) => ({
+        id: `${file.name}-${file.size}-${crypto.randomUUID()}`,
+        file,
+        previewUrl: track(URL.createObjectURL(file)),
+      }))
+
+      setJobs((previous) => [...previous, ...next])
+      for (const job of next) void run(job, settings)
+    },
+    [run, settings, track],
+  )
+
+  // Re-run everything when a control changes - the same thing you would do in
+  // an app, and it makes the attempt count visibly respond to the budget.
+  const update = useCallback(
+    (patch: Partial<Settings>) => {
+      const next = { ...settings, ...patch }
+      setSettings(next)
+      setJobs((previous) =>
+        previous.map((job) => ({
+          ...job,
+          result: undefined,
+          error: undefined,
+        })),
+      )
+      for (const job of jobs) void run(job, next)
+    },
+    [jobs, run, settings],
+  )
+
+  // Paste is the fastest way in from a screenshot tool.
+  useEffect(() => {
+    const onPaste = (event: ClipboardEvent) => {
+      const files = [...(event.clipboardData?.files ?? [])]
+      if (files.length > 0) add(files)
+    }
+    window.addEventListener('paste', onPaste)
+    return () => window.removeEventListener('paste', onPaste)
+  }, [add])
+
+  const onDrop = (event: DragEvent) => {
+    event.preventDefault()
+    setDragging(false)
+    add([...event.dataTransfer.files])
   }
 
-  return (
-    <div className='not-prose flex flex-col gap-6'>
-      <div className='flex flex-wrap items-center gap-6'>
-        <label className='flex items-center gap-2 text-sm'>
-          <span className='text-fd-muted-foreground'>{t`Budget`}</span>
-          <select
-            value={budget}
-            onChange={(event) => setBudget(Number(event.target.value))}
-            className='border-fd-border bg-fd-background rounded-md border px-2 py-1'
-          >
-            {PRESETS.map((preset) => (
-              <option key={preset.label} value={preset.maxBytes}>
-                {preset.label}
-              </option>
-            ))}
-          </select>
-        </label>
+  const onPick = (event: ChangeEvent<HTMLInputElement>) => {
+    add([...(event.target.files ?? [])])
+    event.target.value = ''
+  }
 
-        <label className='flex items-center gap-2 text-sm'>
-          <span className='text-fd-muted-foreground'>{t`Format`}</span>
+  const done = jobs.filter((job) => job.result)
+  const totalIn = done.reduce((sum, job) => sum + job.file.size, 0)
+  const totalOut = done.reduce((sum, job) => sum + (job.result?.bytes ?? 0), 0)
+
+  return (
+    <div className='not-prose flex flex-col gap-5'>
+      <div className='flex flex-wrap items-end gap-5'>
+        <Field label={t`Budget`}>
+          <div className='flex items-center gap-1'>
+            <input
+              type='number'
+              min={5}
+              step={5}
+              value={settings.budgetKb}
+              onChange={(event) =>
+                update({ budgetKb: Math.max(1, Number(event.target.value)) })
+              }
+              className='border-fd-border bg-fd-background w-24 rounded-md border px-2 py-1 text-sm'
+            />
+            <span className='text-fd-muted-foreground text-sm'>kB</span>
+          </div>
+        </Field>
+
+        <Field label={t`Format`}>
           <select
-            value={format}
-            onChange={(event) => setFormat(event.target.value as Formats)}
-            className='border-fd-border bg-fd-background rounded-md border px-2 py-1'
+            value={settings.format}
+            onChange={(event) =>
+              update({ format: event.target.value as Format })
+            }
+            className='border-fd-border bg-fd-background rounded-md border px-2 py-1 text-sm'
           >
             <option value='auto'>auto</option>
             <option value='image/webp'>image/webp</option>
             <option value='image/jpeg'>image/jpeg</option>
+            <option value='image/png'>image/png</option>
           </select>
-        </label>
+        </Field>
+
+        <Field label={t`Longest edge`}>
+          <select
+            value={settings.maxDimension}
+            onChange={(event) =>
+              update({ maxDimension: Number(event.target.value) })
+            }
+            className='border-fd-border bg-fd-background rounded-md border px-2 py-1 text-sm'
+          >
+            {[1024, 2048, 4096].map((value) => (
+              <option key={value} value={value}>
+                {value} px
+              </option>
+            ))}
+          </select>
+        </Field>
+
+        {done.length > 0 && (
+          <div className='ml-auto text-sm'>
+            <span className='text-fd-muted-foreground'>{kb(totalIn)} → </span>
+            <span className='font-medium'>{kb(totalOut)}</span>
+            <Saved from={totalIn} to={totalOut} />
+          </div>
+        )}
       </div>
 
-      <input
-        type='file'
-        accept='image/*,.heic,.heif'
-        disabled={busy}
-        onChange={(event) => {
-          const file = event.target.files?.[0]
-          if (file) void run(file)
+      <button
+        type='button'
+        onClick={() => inputRef.current?.click()}
+        onDragOver={(event) => {
+          event.preventDefault()
+          setDragging(true)
         }}
-        className='border-fd-border rounded-lg border border-dashed p-6 text-sm'
+        onDragLeave={() => setDragging(false)}
+        onDrop={onDrop}
+        className={`rounded-xl border-2 border-dashed px-6 py-10 text-center transition-colors ${
+          dragging
+            ? 'border-fd-primary bg-fd-primary/5'
+            : 'border-fd-border hover:border-fd-primary/50'
+        }`}
+      >
+        <p className='font-medium'>{t`Drop, paste, or click to add images`}</p>
+        <p className='text-fd-muted-foreground mt-1 text-sm'>
+          {t`Several at once is fine. HEIC from an iPhone works. Nothing is uploaded - it all runs in this tab.`}
+        </p>
+      </button>
+
+      <input
+        ref={inputRef}
+        type='file'
+        multiple
+        accept='image/*,.heic,.heif'
+        onChange={onPick}
+        className='hidden'
       />
 
-      <p className='text-fd-muted-foreground text-sm'>
-        {t`Nothing is uploaded - the whole thing runs in this tab. HEIC from an iPhone works too.`}
-      </p>
       <p className='text-fd-muted-foreground text-sm'>
         {t`AVIF is not offered here: it needs the jSquash engine, which this statically exported site cannot bundle.`}
       </p>
 
-      {busy && <p className='text-sm'>{t`Encoding...`}</p>}
-
-      {error && (
-        <p className='text-sm text-red-500'>
-          <code>{error}</code>
-        </p>
-      )}
-
-      {result && original && (
-        <Report original={original} result={result} url={url} />
-      )}
+      <div className='flex flex-col gap-4'>
+        {jobs.map((job) => (
+          <Card key={job.id} job={job} settings={settings} />
+        ))}
+      </div>
     </div>
   )
 }
 
-function Report({
-  original,
-  result,
-  url,
-}: {
-  original: { name: string; bytes: number }
-  result: Result
-  url: string | null
-}) {
+function Card({ job, settings }: { job: Job; settings: Settings }) {
   const t = useI18n()
-  const saved = 1 - result.bytes / original.bytes
+  const { result } = job
 
   return (
-    <div className='flex flex-col gap-4'>
-      <dl className='grid grid-cols-2 gap-x-6 gap-y-2 text-sm sm:grid-cols-3'>
-        <Stat label={t`Original`} value={kb(original.bytes)} />
-        <Stat label={t`Result`} value={kb(result.bytes)} />
-        <Stat
-          label={t`Saved`}
-          value={saved > 0 ? `${(saved * 100).toFixed(0)}%` : '-'}
-        />
-        <Stat label={t`Format`} value={result.format} />
-        <Stat
-          label={t`Dimensions`}
-          value={`${result.width}x${result.height}`}
-        />
-        <Stat
-          label={t`Encodes`}
-          value={`${result.attempts} (${result.engine})`}
-        />
-      </dl>
+    <div className='border-fd-border flex flex-col gap-3 rounded-xl border p-4'>
+      <div className='flex items-baseline justify-between gap-3'>
+        <span className='truncate text-sm font-medium'>{job.file.name}</span>
+        <span className='text-fd-muted-foreground shrink-0 text-sm'>
+          {kb(job.file.size)}
+          {result && (
+            <>
+              {' → '}
+              <span className='text-fd-foreground font-medium'>
+                {kb(result.bytes)}
+              </span>
+              <Saved from={job.file.size} to={result.bytes} />
+            </>
+          )}
+        </span>
+      </div>
 
-      {/* An empty list is the good case. Everything here would otherwise have
-          happened silently. */}
-      {result.degraded.length === 0 ? (
-        <p className='rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm'>
-          {t`Exactly what was requested.`}
+      {job.error && (
+        <p className='text-sm text-red-500'>
+          <code>{job.error}</code>
         </p>
-      ) : (
-        <div className='rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm'>
-          <p className='mb-2 font-medium'>{t`Not quite what was requested:`}</p>
-          <ul className='flex flex-col gap-1'>
-            {result.degraded.map((entry) => (
-              <li key={JSON.stringify(entry)}>
-                <code className='text-xs'>{JSON.stringify(entry)}</code>
-              </li>
-            ))}
-          </ul>
-        </div>
       )}
 
-      {url && (
-        /* oxlint-disable-next-line next/no-img-element -- a blob: URL for an
-           image the user just picked. next/image cannot optimise it, and this
-           site is a static export with no optimiser at all. */
-        <img
-          src={url}
-          alt=''
-          className='border-fd-border max-h-96 w-auto rounded-lg border object-contain'
-        />
+      {!result && !job.error && (
+        <p className='text-fd-muted-foreground text-sm'>{t`Encoding...`}</p>
+      )}
+
+      {result && (
+        <>
+          {/* One row saying what was asked for and what came back. Neutral
+              chips are facts; amber chips are the ways it differs. */}
+          <div className='flex flex-wrap gap-1.5'>
+            <Chip label={t`Requested`} value={settings.format} />
+            <Chip label={t`Final`} value={result.format} />
+            <Chip label={t`Budget`} value={`≤ ${settings.budgetKb} kB`} />
+            <Chip label={t`Size`} value={`${result.width}×${result.height}`} />
+            <Chip label={t`Encodes`} value={String(result.attempts)} />
+            {job.ms !== undefined && (
+              <Chip label={t`Took`} value={`${job.ms} ms`} />
+            )}
+            {/* `t` is a compile-time macro: it only works at its own call
+                site, so the mapping is inlined here rather than handed to a
+                helper along with `t`. */}
+            {result.degraded.map((entry) => (
+              <Chip
+                key={JSON.stringify(entry)}
+                tone='warn'
+                value={
+                  entry.kind === 'format'
+                    ? `${t`format`}: ${entry.want} → ${entry.got}`
+                    : entry.kind === 'exif'
+                      ? t`EXIF dropped`
+                      : entry.kind === 'overshoot'
+                        ? `${t`over budget`}: ${kb(entry.got)}`
+                        : `${t`scaled`}: ${entry.from[0]}×${entry.from[1]} → ${entry.to[0]}×${entry.to[1]}`
+                }
+              />
+            ))}
+          </div>
+
+          {result.degraded.length === 0 && (
+            <p className='text-sm text-emerald-600 dark:text-emerald-400'>
+              {t`Exactly what was requested.`}
+            </p>
+          )}
+
+          <div className='grid grid-cols-2 gap-3'>
+            <Preview label={t`Original`} src={job.previewUrl} />
+            <Preview label={t`Result`} src={job.resultUrl} />
+          </div>
+        </>
       )}
     </div>
   )
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Chip({
+  label,
+  value,
+  tone = 'neutral',
+}: {
+  label?: string
+  value: string
+  tone?: 'neutral' | 'warn'
+}) {
   return (
-    <div>
-      <dt className='text-fd-muted-foreground text-xs'>{label}</dt>
-      <dd className='font-medium'>{value}</dd>
-    </div>
+    <span
+      className={`rounded-full px-2.5 py-1 text-xs ${
+        tone === 'warn'
+          ? 'bg-amber-500/15 text-amber-700 dark:text-amber-400'
+          : 'bg-fd-muted text-fd-muted-foreground'
+      }`}
+    >
+      {label && <span className='opacity-70'>{label} · </span>}
+      <span className='font-medium'>{value}</span>
+    </span>
+  )
+}
+
+function Preview({ label, src }: { label: string; src?: string }) {
+  return (
+    <figure className='flex flex-col gap-1'>
+      <figcaption className='text-fd-muted-foreground text-xs'>
+        {label}
+      </figcaption>
+      {src ? (
+        /* oxlint-disable-next-line next/no-img-element -- a blob: URL for an image the user just picked; next/image cannot optimise it and this site is a static export with no optimiser */
+        <img
+          src={src}
+          alt=''
+          className='border-fd-border max-h-56 w-full rounded-lg border object-contain'
+        />
+      ) : (
+        <div className='border-fd-border h-56 rounded-lg border' />
+      )}
+    </figure>
+  )
+}
+
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <label className='flex flex-col gap-1'>
+      <span className='text-fd-muted-foreground text-xs'>{label}</span>
+      {children}
+    </label>
+  )
+}
+
+function Saved({ from, to }: { from: number; to: number }) {
+  const saved = 1 - to / from
+  if (saved <= 0) return null
+  return (
+    <span className='ml-2 rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-400'>
+      -{(saved * 100).toFixed(0)}%
+    </span>
   )
 }
 
